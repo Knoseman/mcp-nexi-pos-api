@@ -1,7 +1,7 @@
 import dotenv from "dotenv";
 import { z } from "zod";
 
-export const DEFAULT_NEXI_BASE_URL = "https://api.npay.eu/pos/v1";
+export const DEFAULT_NEXI_BASE_URL = "https://api.sandbox.npay.eu/pos/v1";
 export const DEFAULT_CURRENCY = "SEK";
 export const DEFAULT_MAX_AMOUNT_MINOR = 500;
 export const DEFAULT_USER_AGENT = "mcp-nexi-pos-api/0.1.0";
