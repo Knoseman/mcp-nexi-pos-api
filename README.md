@@ -6,9 +6,19 @@ It provides tools to create purchases and refunds, poll payment state, confirm t
 
 ## Setup
 
+### From npm package
+
+```bash
+npm install -g mcp-nexi-pos-api
+mcp-nexi-pos-api
+```
+
+### From source
+
 ```bash
 npm install
 npm run build
+npm start
 ```
 
 Create a local `.env` file:
@@ -37,7 +47,27 @@ NEXI_POS_STORAGE_PATH=./data/nexi-pos.sqlite
 
 ## Claude Desktop config
 
-Example `claude_desktop_config.json` entry:
+Example for a global npm install:
+
+```json
+{
+  "mcpServers": {
+    "nexi-pos": {
+      "command": "mcp-nexi-pos-api",
+      "env": {
+        "NEXI_POS_API_KEY_ID": "your-api-key-id",
+        "NEXI_POS_API_KEY_SECRET": "your-api-key-secret",
+        "NEXI_POS_BASE_URL": "https://api.npay.eu/pos/v1",
+        "NEXI_POS_DEFAULT_CURRENCY": "SEK",
+        "NEXI_POS_MAX_AMOUNT_MINOR": "500",
+        "NEXI_POS_STORAGE_PATH": "/absolute/path/to/data/nexi-pos.sqlite"
+      }
+    }
+  }
+}
+```
+
+Example from source:
 
 ```json
 {
@@ -47,11 +77,7 @@ Example `claude_desktop_config.json` entry:
       "args": ["/absolute/path/to/mcp-nexi-pos-api/dist/index.js"],
       "env": {
         "NEXI_POS_API_KEY_ID": "your-api-key-id",
-        "NEXI_POS_API_KEY_SECRET": "your-api-key-secret",
-        "NEXI_POS_BASE_URL": "https://api.npay.eu/pos/v1",
-        "NEXI_POS_DEFAULT_CURRENCY": "SEK",
-        "NEXI_POS_MAX_AMOUNT_MINOR": "500",
-        "NEXI_POS_STORAGE_PATH": "/absolute/path/to/data/nexi-pos.sqlite"
+        "NEXI_POS_API_KEY_SECRET": "your-api-key-secret"
       }
     }
   }
