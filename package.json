@@ -1,6 +1,6 @@
 {
   "name": "mcp-nexi-pos-api",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "MCP server for Nexi POS card payments",
   "type": "module",
   "main": "dist/index.js",

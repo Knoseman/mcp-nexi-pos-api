@@ -9,7 +9,7 @@ import { createToolContext, toolDefinitions } from "./tools/index.js";
 async function main() {
   const server = new McpServer({
     name: "mcp-nexi-pos-api",
-    version: "0.1.1",
+    version: "0.1.2",
   });
 
   const context = await createToolContext();

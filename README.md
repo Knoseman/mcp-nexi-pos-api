@@ -50,7 +50,7 @@ NEXI_POS_TERMINAL_ID=your-terminal-id
 NEXI_POS_BASE_URL=https://api.sandbox.npay.eu/pos/v1
 NEXI_POS_DEFAULT_CURRENCY=SEK
 NEXI_POS_MAX_AMOUNT_MINOR=500
-NEXI_POS_USER_AGENT=mcp-nexi-pos-api/0.1.1
+NEXI_POS_USER_AGENT=mcp-nexi-pos-api/0.1.2
 NEXI_POS_STORAGE_PATH=./data/nexi-pos.sqlite
 NEXI_POS_REQUEST_TIMEOUT_SECONDS=30
 ```
@@ -65,7 +65,7 @@ NEXI_POS_REQUEST_TIMEOUT_SECONDS=30
 | `NEXI_POS_BASE_URL` | Nexi POS API base URL. | `https://api.sandbox.npay.eu/pos/v1` |
 | `NEXI_POS_DEFAULT_CURRENCY` | Currency used when a tool omits `currency`. | `SEK` |
 | `NEXI_POS_MAX_AMOUNT_MINOR` | Safety limit in minor units. | `500` |
-| `NEXI_POS_USER_AGENT` | User agent sent to Nexi. | `mcp-nexi-pos-api/0.1.1` |
+| `NEXI_POS_USER_AGENT` | User agent sent to Nexi. | `mcp-nexi-pos-api/0.1.2` |
 | `NEXI_POS_STORAGE_PATH` | SQLite file for local recovery state. | `./data/nexi-pos.sqlite` |
 | `NEXI_POS_REQUEST_TIMEOUT_SECONDS` | Hard timeout for each HTTP request to Nexi. | `30` |
 
