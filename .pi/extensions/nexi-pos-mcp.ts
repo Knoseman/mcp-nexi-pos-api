@@ -52,7 +52,7 @@ export default function (pi: ExtensionAPI) {
   registerMcpTool(pi, "get_session_terminal_id", "Get the current Nexi POS terminal ID.", Empty);
   registerMcpTool(pi, "clear_terminal_id", "Clear the current Nexi POS terminal ID.", Empty);
 
-  registerMcpTool(pi, "create_purchase", "Create a low-level Nexi POS purchase.", Type.Object({
+  registerMcpTool(pi, "create_purchase", "Low-level Nexi POS purchase call. For normal customer card payments, prefer take_payment. Amount is in minor units, e.g. 500 for 5.00 SEK.", Type.Object({
     external_id: ExternalId,
     requested_amount: Amount,
     currency: Currency,
@@ -62,7 +62,7 @@ export default function (pi: ExtensionAPI) {
     wait_seconds: WaitSeconds,
   }));
 
-  registerMcpTool(pi, "take_payment", "Take a Nexi POS payment, polling while PROCESSING until timeout or next state.", Type.Object({
+  registerMcpTool(pi, "take_payment", "Recommended normal customer card payment flow. Polls while PROCESSING and tells you when confirmation is needed. Amount is in minor units, e.g. 500 for 5.00 SEK.", Type.Object({
     external_id: ExternalId,
     requested_amount: Amount,
     currency: Currency,
@@ -73,7 +73,7 @@ export default function (pi: ExtensionAPI) {
     auto_confirm: Type.Optional(Type.Boolean()),
   }));
 
-  registerMcpTool(pi, "create_refund", "Create a low-level Nexi POS refund.", Type.Object({
+  registerMcpTool(pi, "create_refund", "Create a Nexi POS refund. Amount is in minor units, e.g. 500 for 5.00 SEK.", Type.Object({
     external_id: ExternalId,
     requested_amount: Amount,
     currency: Currency,
@@ -85,7 +85,7 @@ export default function (pi: ExtensionAPI) {
     wait_seconds: WaitSeconds,
   }));
 
-  registerMcpTool(pi, "confirm_transaction", "Confirm a Nexi POS transaction.", Type.Object({
+  registerMcpTool(pi, "confirm_transaction", "Confirm a Nexi POS transaction after AWAITING_CONFIRM. This completes the approved card result.", Type.Object({
     external_id: ExternalId,
     result_code: Type.String(),
     terminal_id: Type.Optional(TerminalId),
@@ -96,7 +96,7 @@ export default function (pi: ExtensionAPI) {
     wait_seconds: WaitSeconds,
   }));
 
-  registerMcpTool(pi, "get_transaction", "Get a Nexi POS transaction.", Type.Object({
+  registerMcpTool(pi, "get_transaction", "Get a Nexi POS transaction by external_id and terminal. Use after timeout/restart or to check PROCESSING state.", Type.Object({
     external_id: ExternalId,
     terminal_id: Type.Optional(TerminalId),
     wait_seconds: WaitSeconds,

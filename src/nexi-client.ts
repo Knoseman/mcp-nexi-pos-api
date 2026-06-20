@@ -56,6 +56,15 @@ export async function postNexi<
   const url = buildUrl(config.baseUrl, path);
   const authorization = buildBasicAuth(config.apiKeyId, config.apiKeySecret);
 
+  const timeoutMs = config.requestTimeoutSeconds * 1000;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(new Error(`Nexi request timed out after ${config.requestTimeoutSeconds} seconds`)), timeoutMs);
+  const abortFromCaller = () => controller.abort(options.signal?.reason);
+  if (options.signal) {
+    if (options.signal.aborted) abortFromCaller();
+    else options.signal.addEventListener("abort", abortFromCaller, { once: true });
+  }
+
   let response: Response;
   try {
     response = await fetch(url, {
@@ -67,12 +76,16 @@ export async function postNexi<
         Accept: "application/json"
       },
       body: JSON.stringify(body),
-      signal: options.signal
+      signal: controller.signal
     });
   } catch (error) {
-    throw new NexiApiError("Nexi request failed before a response was received", {
+    const timedOut = controller.signal.aborted && !options.signal?.aborted;
+    throw new NexiApiError(timedOut ? `Nexi request timed out after ${config.requestTimeoutSeconds} seconds` : "Nexi request failed before a response was received", {
       body: sanitizeErrorBody(error)
     });
+  } finally {
+    clearTimeout(timeout);
+    options.signal?.removeEventListener("abort", abortFromCaller);
   }
 
   const parsedBody = await parseJsonBody(response);

@@ -12,6 +12,9 @@ export interface TransactionIntent {
 export interface TransactionUpdate {
   external_id: string;
   terminal_id: string;
+  type?: TransactionType;
+  currency?: string;
+  requested_amount?: number;
   state?: string;
   result_code?: string;
   result_description?: string;
@@ -35,6 +38,7 @@ export interface StoredTransaction {
 
 export interface TransactionStore {
   saveIntent(intent: TransactionIntent): void;
+  getTransaction(external_id: string, terminal_id: string): StoredTransaction | null;
   updateTransaction(update: TransactionUpdate | unknown): void;
   markConfirmed(external_id: string, terminal_id: string): void;
   listLocalUnconfirmed(terminal_id?: string): StoredTransaction[];
