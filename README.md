@@ -29,7 +29,7 @@ You need Nexi POS API credentials before you can use the server:
 - `NEXI_POS_API_KEY_SECRET`
 - a Nexi POS terminal ID
 
-The terminal ID is generated together with the API key ID and API key secret. Credential and terminal generation is outside this MCP server for now. Get these values from your Nexi onboarding or admin flow before starting the server.
+The terminal ID is generated together with the API key ID and API key secret. Credential and terminal generation is outside this MCP server for now. Get these values from Nexi API documentation before starting the server.
 
 The smallest useful `.env` file is:
 
