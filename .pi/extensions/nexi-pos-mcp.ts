@@ -33,6 +33,10 @@ const Currency = Type.Optional(Type.String({ description: "ISO 4217 currency cod
 const Amount = Type.Number({ description: "Integer amount in ISO 4217 minor units, e.g. SEK 1.00 = 100" });
 const WaitSeconds = Type.Optional(Type.Number({ description: "Nexi wait_seconds" }));
 const Metadata = Type.Optional(Type.Object({}, { additionalProperties: true }));
+const EventType = Type.Optional(Type.Union([
+  Type.Literal("eu.npay.api.pos.v0.Transaction"),
+  Type.Literal("eu.npay.api.pos.v0.TerminalStatus"),
+], { description: "Nexi event type filter" }));
 
 function registerMcpTool(pi: ExtensionAPI, name: string, description: string, parameters: any) {
   pi.registerTool({
@@ -104,6 +108,18 @@ export default function (pi: ExtensionAPI) {
 
   registerMcpTool(pi, "get_unconfirmed_transactions", "Get Nexi POS unconfirmed transactions for the terminal.", Type.Object({
     terminal_id: Type.Optional(TerminalId),
+  }));
+
+  registerMcpTool(pi, "get_terminal_status", "Get current Nexi POS terminal status.", Type.Object({
+    terminal_id: Type.Optional(TerminalId),
+  }));
+
+  registerMcpTool(pi, "list_terminal_events", "List Nexi POS terminal events. Use next_token to continue without changing the previous filter.", Type.Object({
+    terminal_id: Type.Optional(TerminalId),
+    event_type: EventType,
+    limit: Type.Optional(Type.Number()),
+    wait_seconds: WaitSeconds,
+    next_token: Type.Optional(Type.String()),
   }));
 
   pi.registerCommand("nexi-pos", {

@@ -7,13 +7,17 @@ import {
   createPurchaseInputSchema,
   createRefundInputSchema,
   emptyInputSchema,
+  getTerminalStatusInputSchema,
   getTransactionInputSchema,
   getUnconfirmedTransactionsInputSchema,
+  listTerminalEventsInputSchema,
   setTerminalIdInputSchema,
   takePaymentInputSchema,
   type ConfirmTransactionInput,
   type CreatePurchaseInput,
   type CreateRefundInput,
+  type GetTerminalStatusInput,
+  type ListTerminalEventsInput,
   type TakePaymentInput,
 } from "../schemas.js";
 import { SQLiteStore } from "../storage/sqlite-store.js";
@@ -43,6 +47,17 @@ type ToolResult = {
     masked_card?: string;
     authorized_amount?: number;
     captured_amount?: number;
+    connected?: boolean;
+    transaction_state?: string;
+    screen_message?: string;
+    battery_percentage?: number;
+    plugged_in?: boolean;
+    updated_at?: string;
+    event_count?: number;
+    next_token?: string;
+    latest_event_type?: string;
+    latest_event_time?: string;
+    latest_event_subject?: string;
   };
   error?: {
     name?: string;
@@ -52,6 +67,8 @@ type ToolResult = {
     body?: unknown;
   };
   transaction?: unknown;
+  terminal_status?: unknown;
+  events?: unknown;
   raw?: unknown;
 };
 
@@ -143,6 +160,31 @@ function buildGetUnconfirmedRequest(terminalId: string): NexiRequest {
   return { terminal_id: terminalId };
 }
 
+function buildGetTerminalStatusRequest(terminalId: string): NexiRequest {
+  return { terminal_id: terminalId };
+}
+
+function buildListTerminalEventsRequest(input: ListTerminalEventsInput, terminalId: string): NexiRequest {
+  const body: NexiRequest = {
+    limit: input.limit ?? 20,
+    wait_seconds: input.wait_seconds ?? 0,
+  };
+
+  if (input.next_token) {
+    body.next_token = input.next_token;
+    return body;
+  }
+
+  const filter: NexiRequest = {
+    subject: { eq: terminalId },
+  };
+  if (input.event_type) {
+    filter.type = { eq: input.event_type };
+  }
+  body.filter = filter;
+  return body;
+}
+
 function transactionFrom(raw: any): any {
   return raw?.transaction ?? raw;
 }
@@ -216,6 +258,56 @@ function summarize(operation: string, terminalId: string | undefined, externalId
     next_action: nextAction(state, resultCode),
     summary: buildSummary(tx),
     transaction: tx,
+    raw,
+  };
+}
+
+function terminalStatusFrom(raw: any): any {
+  return raw?.status ?? raw;
+}
+
+function summarizeTerminalStatus(terminalId: string, raw: any): ToolResult {
+  const status = terminalStatusFrom(raw);
+  return {
+    ok: true,
+    operation: "get_terminal_status",
+    terminal_id: terminalId,
+    message: "Terminal status fetched",
+    summary: status && typeof status === "object" ? {
+      connected: status.connected,
+      transaction_state: status.transaction_state,
+      screen_message: status.screen_message,
+      battery_percentage: status.battery_percentage,
+      plugged_in: status.plugged_in,
+      updated_at: status.updated_at,
+    } : undefined,
+    terminal_status: status,
+    raw,
+  };
+}
+
+function eventTimestamp(event: any): string | undefined {
+  const value = event?.time ?? event?.created_at ?? event?.occurred_at ?? event?.updated_at;
+  return typeof value === "string" ? value : undefined;
+}
+
+function summarizeTerminalEvents(terminalId: string, raw: any): ToolResult {
+  const events = Array.isArray(raw?.events) ? raw.events : [];
+  const latest = events[0];
+  const nextToken = typeof raw?.next_token === "string" ? raw.next_token : undefined;
+  return {
+    ok: true,
+    operation: "list_terminal_events",
+    terminal_id: terminalId,
+    message: "Terminal events listed",
+    summary: {
+      event_count: events.length,
+      next_token: nextToken,
+      latest_event_type: typeof latest?.type === "string" ? latest.type : undefined,
+      latest_event_time: eventTimestamp(latest),
+      latest_event_subject: typeof latest?.subject === "string" ? latest.subject : undefined,
+    },
+    events,
     raw,
   };
 }
@@ -420,6 +512,28 @@ export function toolDefinitions(ctx: ToolContext) {
           const raw = await ctx.client.getUnconfirmedTransactions(buildGetUnconfirmedRequest(terminalId));
           return textResult(summarize("get_unconfirmed_transactions", terminalId, undefined, raw));
         } catch (error) { return textResult(errorResult("get_unconfirmed_transactions", error, terminalId)); }
+      },
+    },
+    get_terminal_status: {
+      schema: getTerminalStatusInputSchema,
+      handler: async (input: GetTerminalStatusInput) => {
+        let terminalId: string | undefined;
+        try {
+          terminalId = resolveTerminalId(ctx.config, input.terminal_id);
+          const raw = await ctx.client.getTerminalStatus(buildGetTerminalStatusRequest(terminalId));
+          return textResult(summarizeTerminalStatus(terminalId, raw));
+        } catch (error) { return textResult(errorResult("get_terminal_status", error, terminalId)); }
+      },
+    },
+    list_terminal_events: {
+      schema: listTerminalEventsInputSchema,
+      handler: async (input: ListTerminalEventsInput) => {
+        let terminalId: string | undefined;
+        try {
+          terminalId = resolveTerminalId(ctx.config, input.terminal_id);
+          const raw = await ctx.client.listTerminalEvents(buildListTerminalEventsRequest(input, terminalId));
+          return textResult(summarizeTerminalEvents(terminalId, raw));
+        } catch (error) { return textResult(errorResult("list_terminal_events", error, terminalId)); }
       },
     },
   };

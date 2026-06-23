@@ -36,6 +36,14 @@ export class NexiClient {
   getUnconfirmedTransactions<TResponse = unknown>(body: Record<string, unknown>, options?: NexiPostOptions): Promise<TResponse> {
     return this.post<TResponse>("/transaction/unconfirmed", body, options);
   }
+
+  getTerminalStatus<TResponse = unknown>(body: Record<string, unknown>, options?: NexiPostOptions): Promise<TResponse> {
+    return this.post<TResponse>("/terminal/status", body, options);
+  }
+
+  listTerminalEvents<TResponse = unknown>(body: Record<string, unknown>, options?: NexiPostOptions): Promise<TResponse> {
+    return this.post<TResponse>("/event/list", body, options);
+  }
 }
 
 const MAX_ERROR_BODY_CHARS = 2_000;

@@ -2,7 +2,7 @@
 
 MVP MCP server for Nexi POS payment operations.
 
-It provides tools to create purchases and refunds, poll payment state, confirm transactions, and recover unconfirmed transactions.
+It provides tools to create purchases and refunds, poll payment state, confirm transactions, recover unconfirmed transactions, check terminal status, and list terminal events.
 
 ## Setup
 
@@ -162,6 +162,8 @@ Reusing an old `external_id` for a different amount or order can return the old 
 - `confirm_transaction` - confirm a purchase or refund result.
 - `get_transaction` - fetch a transaction by `external_id` and terminal.
 - `get_unconfirmed_transactions` - list unconfirmed transactions for a terminal.
+- `get_terminal_status` - fetch terminal connection, transaction state, screen, and battery status.
+- `list_terminal_events` - list terminal event stream entries, optionally filtered by event type.
 
 ## Response guide
 
@@ -309,6 +311,16 @@ Tool: `get_unconfirmed_transactions`
 }
 ```
 
+You can also check the terminal status.
+
+Tool: `get_terminal_status`
+
+```json
+{
+  "terminal_id": "your-terminal-id"
+}
+```
+
 If a transaction is waiting for confirmation, confirm it.
 
 Tool: `confirm_transaction`
@@ -318,6 +330,32 @@ Tool: `confirm_transaction`
   "terminal_id": "your-terminal-id",
   "external_id": "order-1001-payment-1",
   "result_code": "SUCCESS"
+}
+```
+
+### List terminal events
+
+Tool: `list_terminal_events`
+
+```json
+{
+  "terminal_id": "your-terminal-id",
+  "event_type": "eu.npay.api.pos.v0.TerminalStatus",
+  "limit": 20,
+  "wait_seconds": 30
+}
+```
+
+If `wait_seconds` is omitted, the tool uses short polling with `0`. Set a positive `wait_seconds` value for long polling.
+
+Use `next_token` from a previous response to continue the same event list. When `next_token` is sent, the server does not send a new filter because Nexi keeps the previous filtering criteria.
+
+```json
+{
+  "terminal_id": "your-terminal-id",
+  "next_token": "token-from-previous-response",
+  "limit": 20,
+  "wait_seconds": 30
 }
 ```
 
@@ -415,7 +453,7 @@ Keep `NEXI_POS_MAX_AMOUNT_MINOR` low in test environments to avoid accidental la
 The MCP tool layer expects these core modules to exist:
 
 - `src/config.ts` exporting `getConfig()` with API, currency, terminal fallback, max amount, request timeout, and storage path settings.
-- `src/nexi-client.ts` exporting `NexiClient` with `purchase`, `refund`, `confirm`, `getTransaction`, and `getUnconfirmedTransactions` methods.
+- `src/nexi-client.ts` exporting `NexiClient` with `purchase`, `refund`, `confirm`, `getTransaction`, `getUnconfirmedTransactions`, `getTerminalStatus`, and `listTerminalEvents` methods.
 - `src/storage/sqlite-store.ts` exporting `SQLiteStore` with `saveIntent`, `updateTransaction`, and `markConfirmed` methods.
 
 These modules are intentionally separate from the MCP tool code so the API client and storage can be tested independently.

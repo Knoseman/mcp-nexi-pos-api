@@ -60,7 +60,26 @@ export const getUnconfirmedTransactionsInputSchema = z.object({
   terminal_id: terminalIdSchema.optional(),
 });
 
+export const getTerminalStatusInputSchema = z.object({
+  terminal_id: terminalIdSchema.optional(),
+});
+
+export const terminalEventTypeSchema = z.enum([
+  "eu.npay.api.pos.v0.Transaction",
+  "eu.npay.api.pos.v0.TerminalStatus",
+]);
+
+export const listTerminalEventsInputSchema = z.object({
+  terminal_id: terminalIdSchema.optional(),
+  event_type: terminalEventTypeSchema.optional(),
+  limit: z.number().int().min(1).max(100).optional(),
+  wait_seconds: waitSecondsSchema,
+  next_token: z.string().trim().min(1).max(4096).optional(),
+});
+
 export type CreatePurchaseInput = z.infer<typeof createPurchaseInputSchema>;
 export type TakePaymentInput = z.infer<typeof takePaymentInputSchema>;
 export type CreateRefundInput = z.infer<typeof createRefundInputSchema>;
 export type ConfirmTransactionInput = z.infer<typeof confirmTransactionInputSchema>;
+export type GetTerminalStatusInput = z.infer<typeof getTerminalStatusInputSchema>;
+export type ListTerminalEventsInput = z.infer<typeof listTerminalEventsInputSchema>;
