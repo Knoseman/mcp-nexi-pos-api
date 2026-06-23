@@ -33,6 +33,7 @@ const Currency = Type.Optional(Type.String({ description: "ISO 4217 currency cod
 const Amount = Type.Number({ description: "Integer amount in ISO 4217 minor units, e.g. SEK 1.00 = 100" });
 const WaitSeconds = Type.Optional(Type.Number({ description: "Nexi wait_seconds" }));
 const Metadata = Type.Optional(Type.Object({}, { additionalProperties: true }));
+const TestCase = Type.Optional(Type.String({ description: "Nexi simulator/test case name or description, e.g. issuer_error or bank declined" }));
 const EventType = Type.Optional(Type.Union([
   Type.Literal("eu.npay.api.pos.v0.Transaction"),
   Type.Literal("eu.npay.api.pos.v0.TerminalStatus"),
@@ -55,10 +56,12 @@ export default function (pi: ExtensionAPI) {
   registerMcpTool(pi, "set_terminal_id", "Set the Nexi POS terminal ID for this Pi session.", Type.Object({ terminal_id: TerminalId }));
   registerMcpTool(pi, "get_session_terminal_id", "Get the current Nexi POS terminal ID.", Empty);
   registerMcpTool(pi, "clear_terminal_id", "Clear the current Nexi POS terminal ID.", Empty);
+  registerMcpTool(pi, "list_test_cases", "List Nexi simulator/test cases with trigger amounts, names, aliases, and descriptions.", Empty);
 
-  registerMcpTool(pi, "create_purchase", "Low-level Nexi POS purchase call. For normal customer card payments, prefer take_payment. Amount is in minor units, e.g. 500 for 5.00 SEK.", Type.Object({
+  registerMcpTool(pi, "create_purchase", "Low-level Nexi POS purchase call. For normal customer card payments, prefer take_payment. Amount is in minor units, e.g. 500 for 5.00 SEK. Can use requested_amount or test_case.", Type.Object({
     external_id: ExternalId,
-    requested_amount: Amount,
+    requested_amount: Type.Optional(Amount),
+    test_case: TestCase,
     currency: Currency,
     terminal_id: Type.Optional(TerminalId),
     cashback_amount: Type.Optional(Amount),
@@ -66,9 +69,10 @@ export default function (pi: ExtensionAPI) {
     wait_seconds: WaitSeconds,
   }));
 
-  registerMcpTool(pi, "take_payment", "Recommended normal customer card payment flow. Polls while PROCESSING and tells you when confirmation is needed. Amount is in minor units, e.g. 500 for 5.00 SEK.", Type.Object({
+  registerMcpTool(pi, "take_payment", "Recommended normal customer card payment flow. Polls while PROCESSING and tells you when confirmation is needed. Amount is in minor units, e.g. 500 for 5.00 SEK. Can use requested_amount or test_case.", Type.Object({
     external_id: ExternalId,
-    requested_amount: Amount,
+    requested_amount: Type.Optional(Amount),
+    test_case: TestCase,
     currency: Currency,
     terminal_id: Type.Optional(TerminalId),
     metadata: Metadata,

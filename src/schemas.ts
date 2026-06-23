@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { simulatorTestCaseNames } from "./simulator-test-cases.js";
 import { validateRequestedAmount } from "./utils/amount.js";
 
 export const terminalIdSchema = z.string().trim().min(1).max(128).regex(/^[A-Za-z0-9._:-]+$/, "terminal_id contains invalid characters");
@@ -7,28 +8,39 @@ export const currencyCodeSchema = z.string().trim().length(3).regex(/^[A-Z]{3}$/
 export const minorUnitAmountSchema = z.number().int().safe().nonnegative();
 export const waitSecondsSchema = z.number().int().min(0).max(120).optional();
 export const metadataSchema = z.record(z.string(), z.unknown()).optional();
+export const simulatorTestCaseInputSchema = z.string().trim().min(1).max(128);
 
 export function validateAmountWithMax(amount: unknown, maxAmountMinor: number): number {
   return validateRequestedAmount(amount, maxAmountMinor);
 }
 
-const transactionBaseSchema = z.object({
+const transactionBaseFields = {
   external_id: externalIdSchema,
-  requested_amount: minorUnitAmountSchema,
   currency: currencyCodeSchema.optional(),
   terminal_id: terminalIdSchema.optional(),
   metadata: metadataSchema,
   wait_seconds: waitSecondsSchema,
+};
+
+const purchaseBaseObjectSchema = z.object({
+  ...transactionBaseFields,
+  requested_amount: minorUnitAmountSchema.optional(),
+  test_case: simulatorTestCaseInputSchema.optional().describe(`Nexi simulator/test case name or description. Known names: ${simulatorTestCaseNames().join(", ")}`),
+});
+
+const transactionBaseSchema = z.object({
+  ...transactionBaseFields,
+  requested_amount: minorUnitAmountSchema,
 });
 
 export const setTerminalIdInputSchema = z.object({ terminal_id: terminalIdSchema });
 export const emptyInputSchema = z.object({}).strict();
 
-export const createPurchaseInputSchema = transactionBaseSchema.extend({
+export const createPurchaseInputSchema = purchaseBaseObjectSchema.extend({
   cashback_amount: minorUnitAmountSchema.optional(),
 });
 
-export const takePaymentInputSchema = transactionBaseSchema.extend({
+export const takePaymentInputSchema = purchaseBaseObjectSchema.extend({
   timeout_seconds: z.number().int().min(1).max(300).optional(),
   auto_confirm: z.boolean().optional(),
 });

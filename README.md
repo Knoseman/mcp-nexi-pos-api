@@ -49,7 +49,7 @@ NEXI_POS_API_KEY_SECRET=your-api-key-secret
 NEXI_POS_TERMINAL_ID=your-terminal-id
 NEXI_POS_BASE_URL=https://api.sandbox.npay.eu/pos/v1
 NEXI_POS_DEFAULT_CURRENCY=SEK
-NEXI_POS_MAX_AMOUNT_MINOR=500
+NEXI_POS_MAX_AMOUNT_MINOR=100021
 NEXI_POS_USER_AGENT=mcp-nexi-pos-api/0.1.3
 NEXI_POS_STORAGE_PATH=./data/nexi-pos.sqlite
 NEXI_POS_REQUEST_TIMEOUT_SECONDS=30
@@ -64,7 +64,7 @@ NEXI_POS_REQUEST_TIMEOUT_SECONDS=30
 | `NEXI_POS_TERMINAL_ID` | Optional terminal ID fallback when no tool `terminal_id` or session terminal ID is available. Generated with the API credentials. | No default |
 | `NEXI_POS_BASE_URL` | Nexi POS API base URL. | `https://api.sandbox.npay.eu/pos/v1` |
 | `NEXI_POS_DEFAULT_CURRENCY` | Currency used when a tool omits `currency`. | `SEK` |
-| `NEXI_POS_MAX_AMOUNT_MINOR` | Safety limit in minor units. | `500` |
+| `NEXI_POS_MAX_AMOUNT_MINOR` | Safety limit in minor units. Defaults high enough for Nexi test-case amounts. | `100021` |
 | `NEXI_POS_USER_AGENT` | User agent sent to Nexi. | `mcp-nexi-pos-api/0.1.3` |
 | `NEXI_POS_STORAGE_PATH` | SQLite file for local recovery state. | `./data/nexi-pos.sqlite` |
 | `NEXI_POS_REQUEST_TIMEOUT_SECONDS` | Hard timeout for each HTTP request to Nexi. | `30` |
@@ -101,7 +101,7 @@ Fuller example for a global npm install:
         "NEXI_POS_TERMINAL_ID": "your-terminal-id",
         "NEXI_POS_BASE_URL": "https://api.sandbox.npay.eu/pos/v1",
         "NEXI_POS_DEFAULT_CURRENCY": "SEK",
-        "NEXI_POS_MAX_AMOUNT_MINOR": "500",
+        "NEXI_POS_MAX_AMOUNT_MINOR": "100021",
         "NEXI_POS_STORAGE_PATH": "/absolute/path/to/data/nexi-pos.sqlite"
       }
     }
@@ -137,7 +137,7 @@ Examples:
 - `EUR 1.00` = `100`
 - `JPY 1` = `1`
 
-The default max amount is `500`, meaning SEK/EUR `5.00`. Set `NEXI_POS_MAX_AMOUNT_MINOR` to a value that matches your test or production needs.
+The default max amount is `100021`, meaning SEK/EUR `1000.21`. This allows the documented Nexi simulator/test-case amounts. Set `NEXI_POS_MAX_AMOUNT_MINOR` to a lower value if your environment should block larger test amounts.
 
 ## External IDs
 
@@ -156,8 +156,9 @@ Reusing an old `external_id` for a different amount or order can return the old 
 - `set_terminal_id` - store a terminal ID for this MCP server session.
 - `get_session_terminal_id` - show the current session terminal ID.
 - `clear_terminal_id` - clear the session terminal ID.
-- `create_purchase` - low-level purchase call.
-- `take_payment` - recommended normal purchase flow. It creates/polls a purchase until Nexi leaves `PROCESSING` or the timeout is reached.
+- `list_test_cases` - list documented Nexi simulator/test cases and their trigger amounts.
+- `create_purchase` - low-level purchase call. Can use `requested_amount` or named `test_case`.
+- `take_payment` - recommended normal purchase flow. It creates/polls a purchase until Nexi leaves `PROCESSING` or the timeout is reached. Can use `requested_amount` or named `test_case`.
 - `create_refund` - low-level refund call.
 - `confirm_transaction` - confirm a purchase or refund result.
 - `get_transaction` - fetch a transaction by `external_id` and terminal.
@@ -204,6 +205,7 @@ Field meanings:
 - `summary`: short user-friendly payment details. Use this before inspecting `raw`.
 - `user_message`: important human-readable warning or context.
 - `next_action`: suggested next step, for example poll again, confirm, or no action needed.
+- `test_case`: included when `requested_amount` matches a documented Nexi simulator/test case, or when `test_case` was used as input.
 - `raw`: full Nexi response for debugging and integrations.
 
 ## Normal payment flow
@@ -235,6 +237,27 @@ Tool: `take_payment`
   "currency": "SEK",
   "timeout_seconds": 60
 }
+```
+
+### Run a named Nexi test case
+
+Tool: `take_payment`
+
+```json
+{
+  "external_id": "test-issuer-error-1",
+  "test_case": "issuer_error",
+  "currency": "SEK",
+  "timeout_seconds": 60
+}
+```
+
+The tool maps `issuer_error` to `requested_amount: 100006`. You can also use descriptions or aliases, for example `"bank declined"`.
+
+To list supported names and descriptions, call `list_test_cases`:
+
+```json
+{}
 ```
 
 ### Confirm payment
@@ -424,7 +447,7 @@ Pass `terminal_id` in the tool call, call `set_terminal_id`, or set `NEXI_POS_TE
 
 ### Amount exceeds max
 
-The server blocks amounts above `NEXI_POS_MAX_AMOUNT_MINOR`. Lower `requested_amount` or raise `NEXI_POS_MAX_AMOUNT_MINOR` for your environment. Amounts are minor units, so SEK `5.00` is `500`.
+The server blocks amounts above `NEXI_POS_MAX_AMOUNT_MINOR`. Lower `requested_amount` or raise `NEXI_POS_MAX_AMOUNT_MINOR` for your environment. Amounts are minor units, so SEK `5.00` is `500`. The default `100021` allows Nexi's documented test-case trigger amounts.
 
 ### Transaction stuck in `PROCESSING`
 
@@ -438,15 +461,41 @@ If `state` is `AWAITING_CONFIRM`, the card step has succeeded but the transactio
 
 Use the same `external_id` only to retry the same transaction. If the order, amount, or payment attempt is different, use a new `external_id`.
 
-## Simulator amount examples
+## Nexi simulator/test cases
 
-Use small minor-unit amounts during simulator testing, for example:
+Nexi documents special test-case amounts that can be used in sandbox and production simulator testing. The server detects these amounts and adds `test_case` information to responses. You can also trigger them by name or description with `test_case` instead of remembering the amount.
 
-- `100` for SEK `1.00`
-- `200` for SEK `2.00`
-- `500` for SEK `5.00`
+Examples:
 
-Keep `NEXI_POS_MAX_AMOUNT_MINOR` low in test environments to avoid accidental large payments.
+- `test_case: "instant_success"` -> `requested_amount: 100002`
+- `test_case: "bank declined"` -> `requested_amount: 100006`
+- `requested_amount: 100017` -> response includes the 10% tip test-case information
+
+Available cases:
+
+| Name | Amount | Category | Description |
+| --- | ---: | --- | --- |
+| `successful_2s_delay` | `100001` | success | Successful transaction with 2-second delay |
+| `instant_success` | `100002` | success | Instant successful transaction (0 seconds) |
+| `rejected_by_processor` | `100003` | error | Transaction rejected by payment processor |
+| `customer_cancelled` | `100004` | error | Transaction aborted (customer cancelled) |
+| `card_removed` | `100005` | error | Card removed during processing |
+| `issuer_error` | `100006` | error | Issuer error (bank declined) |
+| `internal_system_error` | `100007` | error | Internal system error |
+| `network_connectivity_error` | `100008` | error | Network connectivity error |
+| `payment_method_not_accepted` | `100009` | error | Card/payment method not accepted |
+| `contactless_pin_verified` | `100010` | payment_method | Successful PIN-verified contactless transaction |
+| `contactless_cardholder_verification` | `100011` | payment_method | Successful contactless with cardholder verification |
+| `chip_without_pin` | `100012` | payment_method | Successful chip card without PIN |
+| `chip_with_pin` | `100013` | payment_method | Successful chip card with PIN |
+| `magstripe_signature` | `100014` | payment_method | Successful magnetic stripe with signature |
+| `magstripe_pin` | `100015` | payment_method | Successful magnetic stripe with PIN |
+| `chip_with_pin_alternative` | `100016` | payment_method | Successful chip card with PIN (alternative mode) |
+| `tip_10_percent` | `100017` | special_feature | Successful transaction with 10% tip added |
+| `surcharge_1_5_percent` | `100018` | special_feature | Successful transaction with 1.5% surcharge |
+| `dcc_enabled` | `100019` | special_feature | Successful transaction with Dynamic Currency Conversion enabled |
+| `success_30s_delay` | `100020` | success | Successful transaction with 30-second delay |
+| `loyalty_link_identity` | `100021` | special_feature | Successful transaction with Nexi Loyalty Link customer identity in response |
 
 ## Implementation notes for integration
 

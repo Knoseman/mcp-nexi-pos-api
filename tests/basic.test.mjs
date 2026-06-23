@@ -24,6 +24,7 @@ test("loadConfig supports optional terminal ID and request timeout", () => {
 
   assert.equal(config.terminalId, "t-123");
   assert.equal(config.requestTimeoutSeconds, 12);
+  assert.equal(loadConfig(baseEnv).maxAmountMinor, 100021);
 });
 
 test("redactValue hides credentials and card values", () => {
@@ -152,6 +153,63 @@ test("terminal tools build requests and summarize responses", async () => {
   assert.deepEqual(calls[2].body, { next_token: "next-1", limit: 5, wait_seconds: 10 });
   assert.equal(eventsPayload.summary.event_count, 1);
   assert.equal(eventsPayload.summary.next_token, "next-2");
+});
+
+test("purchase tools support named and detected Nexi test cases", async () => {
+  const calls = [];
+  const client = {
+    purchase: async (body) => {
+      calls.push(body);
+      return {
+        transaction: {
+          external_id: body.external_id,
+          terminal_id: body.terminal_id,
+          requested_amount: body.requested_amount,
+          total_amount: body.requested_amount,
+          currency: body.currency,
+          state: "AWAITING_CONFIRM",
+          result_code: "SUCCESS",
+          type: "PURCHASE",
+        },
+      };
+    },
+  };
+  const store = {
+    getTransaction: () => null,
+    saveIntent: () => undefined,
+    updateTransaction: () => undefined,
+  };
+  const tools = toolDefinitions({
+    client,
+    store,
+    config: {
+      apiKeyId: "key-id",
+      apiKeySecret: "key-secret",
+      baseUrl: "https://example.invalid/pos/v1",
+      defaultCurrency: "SEK",
+      maxAmountMinor: 100021,
+      userAgent: "test/1.0",
+      storagePath: "./data/test.sqlite",
+      requestTimeoutSeconds: 30,
+      terminalId: "t-1",
+    },
+  });
+
+  const listResult = await tools.list_test_cases.handler({});
+  const listPayload = JSON.parse(listResult.content[0].text);
+  assert.equal(listPayload.summary.test_case_count, 21);
+  assert.ok(listPayload.test_cases.some((testCase) => testCase.name === "issuer_error"));
+
+  const namedResult = await tools.create_purchase.handler({ external_id: "test-issuer", test_case: "bank declined", currency: "SEK" });
+  const namedPayload = JSON.parse(namedResult.content[0].text);
+  assert.equal(calls[0].requested_amount, 100006);
+  assert.equal(namedPayload.test_case.name, "issuer_error");
+  assert.match(namedPayload.user_message, /issuer_error/);
+
+  const detectedResult = await tools.create_purchase.handler({ external_id: "test-tip", requested_amount: 100017, currency: "SEK" });
+  const detectedPayload = JSON.parse(detectedResult.content[0].text);
+  assert.equal(calls[1].requested_amount, 100017);
+  assert.equal(detectedPayload.test_case.name, "tip_10_percent");
 });
 
 test("postNexi times out stalled requests", async () => {

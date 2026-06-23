@@ -20,6 +20,7 @@ import {
   type ListTerminalEventsInput,
   type TakePaymentInput,
 } from "../schemas.js";
+import { SIMULATOR_TEST_CASES, findSimulatorTestCase, findSimulatorTestCaseByAmount, type SimulatorTestCase } from "../simulator-test-cases.js";
 import { SQLiteStore } from "../storage/sqlite-store.js";
 import type { TransactionType } from "../storage/types.js";
 import { NexiApiError } from "../utils/errors.js";
@@ -38,6 +39,8 @@ type ToolResult = {
   message: string;
   user_message?: string;
   next_action?: string;
+  test_case?: SimulatorTestCase;
+  test_cases?: SimulatorTestCase[];
   summary?: {
     amount?: number;
     currency?: string;
@@ -58,6 +61,7 @@ type ToolResult = {
     latest_event_type?: string;
     latest_event_time?: string;
     latest_event_subject?: string;
+    test_case_count?: number;
   };
   error?: {
     name?: string;
@@ -97,20 +101,44 @@ function currencyOrDefault(config: ToolContext["config"], currency?: string): st
 }
 
 function assertAmount(config: ToolContext["config"], amount: number) {
-  const maxAmount = config.maxAmountMinor ?? 500;
+  const maxAmount = config.maxAmountMinor ?? 100_021;
   if (!Number.isInteger(amount)) throw new Error("requested_amount must be an integer in minor units. Example: 5.00 SEK = 500.");
-  if (amount > maxAmount) throw new Error(`requested_amount exceeds configured max amount (${maxAmount}). Amounts are minor units, so 5.00 SEK = 500.`);
+  if (amount > maxAmount) throw new Error(`requested_amount exceeds configured max amount (${maxAmount}). Amounts are minor units, so 5.00 SEK = 500. Nexi simulator/test cases use amounts up to 100021.`);
+}
+
+function resolvePurchaseAmount(input: CreatePurchaseInput | TakePaymentInput): { amount: number; testCase?: SimulatorTestCase } {
+  if (input.test_case) {
+    const testCase = findSimulatorTestCase(input.test_case);
+    if (!testCase) {
+      throw new Error(`Unknown Nexi test_case "${input.test_case}". Call list_test_cases to see supported names and descriptions.`);
+    }
+    if (input.requested_amount != null && input.requested_amount !== testCase.amount) {
+      throw new Error(`test_case "${input.test_case}" maps to requested_amount ${testCase.amount}, but requested_amount ${input.requested_amount} was also provided. Omit requested_amount or use the matching amount.`);
+    }
+    return { amount: testCase.amount, testCase };
+  }
+
+  if (input.requested_amount == null) {
+    throw new Error("Either requested_amount or test_case is required");
+  }
+
+  return { amount: input.requested_amount, testCase: findSimulatorTestCaseByAmount(input.requested_amount) };
+}
+
+function testCaseMessage(testCase?: SimulatorTestCase): string | undefined {
+  if (!testCase) return undefined;
+  return `This requested_amount matches Nexi test case ${testCase.name}: ${testCase.description}.`;
 }
 
 function addIfDefined(target: NexiRequest, key: string, value: unknown) {
   if (value !== undefined) target[key] = value;
 }
 
-function buildPurchaseRequest(input: CreatePurchaseInput | TakePaymentInput, terminalId: string, currency: string, waitSeconds: number): NexiRequest {
+function buildPurchaseRequest(input: CreatePurchaseInput | TakePaymentInput, terminalId: string, currency: string, waitSeconds: number, requestedAmount: number): NexiRequest {
   const body: NexiRequest = {
     external_id: input.external_id,
     terminal_id: terminalId,
-    requested_amount: input.requested_amount,
+    requested_amount: requestedAmount,
     currency,
     wait_seconds: waitSeconds,
   };
@@ -239,7 +267,7 @@ function buildSummary(tx: any): ToolResult["summary"] | undefined {
   };
 }
 
-function summarize(operation: string, terminalId: string | undefined, externalId: string | undefined, raw: any, message?: string): ToolResult {
+function summarize(operation: string, terminalId: string | undefined, externalId: string | undefined, raw: any, message?: string, testCase?: SimulatorTestCase): ToolResult {
   const tx = transactionFrom(raw);
   const resultCode = tx?.result_code ?? raw?.result_code;
   const state = tx?.state ?? raw?.state;
@@ -254,8 +282,9 @@ function summarize(operation: string, terminalId: string | undefined, externalId
     result_description: resultDescription,
     success: resultCode === "SUCCESS",
     message: message ?? `${operation} handled`,
-    user_message: userMessage(state, resultCode),
+    user_message: [testCaseMessage(testCase), userMessage(state, resultCode)].filter(Boolean).join(" ") || undefined,
     next_action: nextAction(state, resultCode),
+    test_case: testCase,
     summary: buildSummary(tx),
     transaction: tx,
     raw,
@@ -359,14 +388,14 @@ function assertIdempotentRetry(store: ToolContext["store"], input: { external_id
   }
 }
 
-async function saveIntent(store: ToolContext["store"], input: { external_id: string; requested_amount: number; currency?: string; metadata?: Record<string, unknown> }, terminalId: string, type: TransactionType, config: ToolContext["config"]) {
-  assertIdempotentRetry(store, input, terminalId, type, config);
+async function saveIntent(store: ToolContext["store"], input: { external_id: string; currency?: string; metadata?: Record<string, unknown> }, requestedAmount: number, terminalId: string, type: TransactionType, config: ToolContext["config"]) {
+  assertIdempotentRetry(store, { ...input, requested_amount: requestedAmount }, terminalId, type, config);
   await store.saveIntent?.({
     external_id: input.external_id,
     terminal_id: terminalId,
     type,
     currency: currencyOrDefault(config, input.currency),
-    requested_amount: input.requested_amount,
+    requested_amount: requestedAmount,
     metadata: input.metadata,
   });
 }
@@ -415,17 +444,28 @@ export function toolDefinitions(ctx: ToolContext) {
         return textResult({ ok: true, operation: "clear_terminal_id", terminal_id: previous, message: "Session terminal ID cleared" });
       },
     },
+    list_test_cases: {
+      schema: emptyInputSchema,
+      handler: async () => textResult({
+        ok: true,
+        operation: "list_test_cases",
+        message: "Nexi simulator/test cases listed",
+        test_cases: SIMULATOR_TEST_CASES,
+        summary: { test_case_count: SIMULATOR_TEST_CASES.length },
+      }),
+    },
     create_purchase: {
       schema: createPurchaseInputSchema,
       handler: async (input: CreatePurchaseInput) => {
         let terminalId: string | undefined;
         try {
           terminalId = resolveTerminalId(ctx.config, input.terminal_id);
-          assertAmount(ctx.config, input.requested_amount);
-          await saveIntent(ctx.store, input, terminalId, "purchase", ctx.config);
-          const raw = await ctx.client.purchase(buildPurchaseRequest(input, terminalId, currencyOrDefault(ctx.config, input.currency), input.wait_seconds ?? 25));
+          const { amount, testCase } = resolvePurchaseAmount(input);
+          assertAmount(ctx.config, amount);
+          await saveIntent(ctx.store, input, amount, terminalId, "purchase", ctx.config);
+          const raw = await ctx.client.purchase(buildPurchaseRequest(input, terminalId, currencyOrDefault(ctx.config, input.currency), input.wait_seconds ?? 25, amount));
           await updateTransaction(ctx.store, raw);
-          return textResult(summarize("create_purchase", terminalId, input.external_id, raw));
+          return textResult(summarize("create_purchase", terminalId, input.external_id, raw, undefined, testCase));
         } catch (error) { return textResult(errorResult("create_purchase", error, terminalId, input.external_id)); }
       },
     },
@@ -437,12 +477,13 @@ export function toolDefinitions(ctx: ToolContext) {
         try {
           terminalId = resolveTerminalId(ctx.config, input.terminal_id);
           const deadline = Date.now() + (input.timeout_seconds ?? 15) * 1000;
-          assertAmount(ctx.config, input.requested_amount);
-          await saveIntent(ctx.store, input, terminalId, "purchase", ctx.config);
+          const { amount, testCase } = resolvePurchaseAmount(input);
+          assertAmount(ctx.config, amount);
+          await saveIntent(ctx.store, input, amount, terminalId, "purchase", ctx.config);
           while (Date.now() < deadline) {
             const remaining = Math.max(1, Math.ceil((deadline - Date.now()) / 1000));
             const waitSeconds = Math.min(input.wait_seconds ?? 25, remaining);
-            lastRaw = await ctx.client.purchase(buildPurchaseRequest(input, terminalId, currencyOrDefault(ctx.config, input.currency), waitSeconds));
+            lastRaw = await ctx.client.purchase(buildPurchaseRequest(input, terminalId, currencyOrDefault(ctx.config, input.currency), waitSeconds, amount));
             await updateTransaction(ctx.store, lastRaw);
             const state = stateFrom(lastRaw);
             if (state !== "PROCESSING") break;
@@ -457,10 +498,10 @@ export function toolDefinitions(ctx: ToolContext) {
             lastRaw = await ctx.client.confirm(buildConfirmRequest({ external_id: input.external_id, terminal_id: terminalId, result_code: resultCode }, terminalId, 25));
             await updateTransaction(ctx.store, lastRaw);
             await ctx.store.markConfirmed?.(input.external_id, terminalId);
-            return textResult(summarize("take_payment", terminalId, input.external_id, lastRaw, "Payment reached AWAITING_CONFIRM and was auto-confirmed"));
+            return textResult(summarize("take_payment", terminalId, input.external_id, lastRaw, "Payment reached AWAITING_CONFIRM and was auto-confirmed", testCase));
           }
           const timedOut = Date.now() >= deadline && state === "PROCESSING";
-          return textResult(summarize("take_payment", terminalId, input.external_id, lastRaw, timedOut ? "Payment is still PROCESSING after timeout" : "Payment flow stopped at terminal/current state"));
+          return textResult(summarize("take_payment", terminalId, input.external_id, lastRaw, timedOut ? "Payment is still PROCESSING after timeout" : "Payment flow stopped at terminal/current state", testCase));
         } catch (error) { return textResult(errorResult("take_payment", error, terminalId, input.external_id)); }
       },
     },
@@ -471,7 +512,7 @@ export function toolDefinitions(ctx: ToolContext) {
         try {
           terminalId = resolveTerminalId(ctx.config, input.terminal_id);
           assertAmount(ctx.config, input.requested_amount);
-          await saveIntent(ctx.store, input, terminalId, "refund", ctx.config);
+          await saveIntent(ctx.store, input, input.requested_amount, terminalId, "refund", ctx.config);
           const raw = await ctx.client.refund(buildRefundRequest(input, terminalId, currencyOrDefault(ctx.config, input.currency), input.wait_seconds ?? 25));
           await updateTransaction(ctx.store, raw);
           return textResult(summarize("create_refund", terminalId, input.external_id, raw));
